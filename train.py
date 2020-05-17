@@ -7,12 +7,14 @@ from tqdm import tqdm
 from torch.optim import Adam
 from models.cnn13 import CNN13
 from loss import mix_match_loss
+from loss import pseudo_label_loss
 from optimizers.weight_ema import WeightEMA
 from models.wideresnet import WideResNet
 from sklearn.metrics import accuracy_score
 from config import load_arguments, load_config
 from semi_supervised.mix_match import MixMatch
 from datasets.data_loaders import load_train_data
+from semi_supervised.pseudo_label import PseudoLabel
 
 seed = 0
 
@@ -27,8 +29,7 @@ def main():
     config = load_config(arguments.config)
 
     train_labeled_dataloader, train_unlabeled_dataloader, validation_dataloader = load_train_data(config)
-    model, ema_model, optimizer, ema_optimizer = load(config)
-    mix_match = MixMatch(config)
+    model, ema_model, optimizer, ema_optimizer, semi_supervised, semi_supervised_loss = load(config)
 
     metrics = {
         'train_loss': 0,
@@ -50,7 +51,8 @@ def main():
                 train_labeled_dataloader, train_unlabeled_dataloader, train_labeled_dataloader_iterator,
                 train_unlabeled_dataloader_iterator, config)
             train_step(epoch_step, batch_step, inputs_x, targets_x, ub,
-                       mix_match, model, ema_model, optimizer, ema_optimizer, metrics, config)
+                       semi_supervised, semi_supervised_loss, model,
+                       ema_model, optimizer, ema_optimizer, metrics, config)
             on_train_batch_end(epoch_step, inputs_x, targets_x, ema_model, metrics, train_progress_bar)
 
         test_progress_bar = tqdm(enumerate(validation_dataloader), total=len(validation_dataloader))
@@ -58,7 +60,8 @@ def main():
             validation_step(ema_model, batch, metrics, config)
             on_validation_batch_end(epoch_step, metrics, test_progress_bar)
 
-        best_validation_accuracy = on_epoch_end(epoch_step, best_validation_accuracy, model, ema_model, optimizer, config, metrics)
+        best_validation_accuracy = on_epoch_end(epoch_step, best_validation_accuracy, model, ema_model, optimizer,
+                                                config, metrics)
 
         metrics = {
             'train_loss': 0,
@@ -69,11 +72,11 @@ def main():
         }
 
 
-def train_step(epoch_step, batch_step, inputs_x, targets_x, ub, mix_match, model, ema_model,
-               optimizer, ema_optimizer, metrics, config):
-    x_logits, x_targets, u_logits, u_targets = mix_match(inputs_x, targets_x, ub, model, ema_model, config)
+def train_step(epoch_step, batch_step, inputs_x, targets_x, ub, semi_supervised, semi_supervised_loss,
+               model, ema_model, optimizer, ema_optimizer, metrics, config):
+    x_logits, x_targets, u_logits, u_targets = semi_supervised(inputs_x, targets_x, ub, model, ema_model, config)
 
-    loss = mix_match_loss(epoch_step, batch_step, x_logits, x_targets, u_logits, u_targets, config)
+    loss = semi_supervised_loss(epoch_step, batch_step, x_logits, x_targets, u_logits, u_targets, config)
     metrics['train_loss'] += loss.item()
 
     optimizer.zero_grad()
@@ -115,10 +118,10 @@ def on_train_batch_start(train_labeled_dataloader, train_unlabeled_dataloader, t
         inputs_x, targets_x = train_labeled_dataloader_iterator.next()
 
     try:
-        ub, _ = [], [] if not train_unlabeled_dataloader_iterator else train_unlabeled_dataloader_iterator.next()
+        ub = [] if not train_unlabeled_dataloader_iterator else train_unlabeled_dataloader_iterator.next()[0]
     except StopIteration as e:
         train_unlabeled_dataloader_iterator = iter(train_unlabeled_dataloader)
-        ub, _ = [], [] if not train_unlabeled_dataloader_iterator else train_unlabeled_dataloader_iterator.next()
+        ub = [] if not train_unlabeled_dataloader_iterator else train_unlabeled_dataloader_iterator.next()[0]
 
     targets_x = torch.zeros(config.batch_size, config.dataset_classes).scatter_(1, targets_x.view(-1, 1), 1)
 
@@ -198,6 +201,13 @@ def load(config):
         model = CNN13(num_classes=config.dataset_classes)
         ema_model = CNN13(num_classes=config.dataset_classes)
 
+    if config.semi_supervised == 'mix_match':
+        semi_supervised = MixMatch(config)
+        semi_supervised_loss = mix_match_loss
+    elif config.semi_supervised == 'pseudo_label':
+        semi_supervised = PseudoLabel(config)
+        semi_supervised_loss = pseudo_label_loss
+
     model.to(config.device)
     ema_model.to(config.device)
 
@@ -219,7 +229,7 @@ def load(config):
                 if isinstance(v, torch.Tensor):
                     optimizer_state[k] = v.to(config.device)
 
-    return model, ema_model, optimizer, ema_optimizer
+    return model, ema_model, optimizer, ema_optimizer, semi_supervised, semi_supervised_loss
 
 
 if __name__ == '__main__':

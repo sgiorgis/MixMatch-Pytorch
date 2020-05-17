@@ -21,6 +21,7 @@ class Config(object):
         self.ema = kwargs['train'].pop('ema', False)
         self.mix_up = kwargs['train'].pop('mix_up', 'all')
         self.model = kwargs['train'].pop('model', 'wideresnet')
+        self.semi_supervised = kwargs['train'].pop('semi_supervised', 'mix_match')
 
         self.learning_rate = kwargs['optimizer'].pop('learning_rate', 0.002)
         self.ema_decay = kwargs['optimizer'].pop('ema_decay', 0.999)
@@ -40,6 +41,9 @@ class Config(object):
 
         if self.mix_up not in ('all', 'labeled', 'unlabeled', 'separate', 'None'):
             raise Exception(f'Mix up mode {config.mix_up} is not supported')
+
+        if self.semi_supervised not in ('mix_match', 'pseudo_label'):
+            raise Exception(f'Semi-supervised method {config.semi_supervised} is not supported')
 
     def __repr__(self):
         return pprint.pformat(self.__dict__)

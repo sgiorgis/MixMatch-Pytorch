@@ -5,9 +5,8 @@ import torch.nn as nn
 
 class PseudoLabel(nn.Module):
     def __init__(self, config):
-        super(PsuedoLabel, self).__init__()
+        super(PseudoLabel, self).__init__()
         self.config = config
-        
 
     def forward(self, x_hat, y_one_hot, ub, model, ema_model, config):
         pseudo_labels = torch.eye(config.dataset_classes).to(config.device)
