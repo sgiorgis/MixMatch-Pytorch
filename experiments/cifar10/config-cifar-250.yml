@@ -1,0 +1,23 @@
+dataset:
+  name: CIFAR10
+  root: ./data
+train:
+  epochs: 1024
+  batch_size: 64
+  iterations: 1024
+  labeled_data: 250
+  ema: False
+#  ema: True
+  mix_up: all
+#  mix_up: labeled
+#  mix_up: unlabeled
+#  mix_up: None
+#resume: True
+  #  checkpoint_path: './experiments/checkpoint-CIFAR10-250-2-0.5-all-False.bin'
+optimizer:
+  learning_rate: 0.002
+  ema_decay: 0.999
+  lambda_u: 75
+  k: 2
+  t: 0.5
+  alpha: 0.75

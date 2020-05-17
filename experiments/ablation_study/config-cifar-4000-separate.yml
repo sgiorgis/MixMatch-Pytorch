@@ -1,0 +1,17 @@
+dataset:
+  name: CIFAR10
+  root: ./data
+train:
+  epochs: 100
+  batch_size: 64
+  iterations: 1024
+  labeled_data: 4000
+  ema: False
+  mix_up: separate
+optimizer:
+  learning_rate: 0.002
+  ema_decay: 0.999
+  lambda_u: 75
+  k: 2
+  t: 0.5
+  alpha: 0.75
